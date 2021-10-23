@@ -25,10 +25,7 @@ Find 2 examples of maps that you think are 'bad'.
 _Question 1_ Why are they bad? What might improve them? 
 _Question 2_ Rely on the Healy and Wilke texts to provide some structure to your answers.
 
-Well... I haven't made many maps... Aka I don't have any of my own to share??
-```{r}
-![ummmmm bad map 1](images/week3/silly-dog.png)
-```
+![Bad Map 1](badmap1.jpg)
 
 # Task 2: Load your libraries and build a dataframe
 You can choose whichever datasets you'd like from the past several months as the subject for your mapping. You'll need to use at least one tabular join, one spatial join, and one extraction to create the dataframe. Load the packages, the data, and make sure everything is projected here. Give me a sense for what you are hoping to map.
@@ -40,9 +37,129 @@ library(tidyr)
 library(dplyr)
 
 
+data <- list.files("/opt/data/session14/")
+data
+
+# Questions: Which protected area has the most species richness? And are the
+# most species rich protected areas visited the most?
+
+pas.shp <- read_sf("/opt/data/session14/reg_pas.shp")
+mamm.rich <- rast("/opt/data/session16/Mammals_total_richness.tif")
+park.visits <- read.csv("/opt/data/session14/ParkVisits_2020IWPW.csv", skip = 3)
 
 ```
+# Check geometries
 
+```{r geocheck}
+st_is_valid(pas.shp)
+pas.shp.valid <- st_make_valid(pas.shp)
+st_is_valid(pas.shp.valid)
+```
+
+# Check CRS
+```{r crscheck}
+
+st_crs(pas.shp.valid)$proj4string
+st_crs(mamm.rich)
+
+# shapefile needs to be in same CRS as raster
+# DON'T REPROJECT RASTERS
+
+pas.valid.proj <- pas.shp.valid %>% 
+  st_transform(., crs = st_crs(mamm.rich))
+
+st_crs(pas.valid.proj) == st_crs(mamm.rich)
+
+# Also know from previous code we need to catalyze mammal richness:
+# And only keep what we need: the value
+mamm.rich <- catalyze(mamm.rich)
+plot(mamm.rich)
+
+# When we plot the data we see that the “Value” raster contains the informaiton we are looking for (the number of species weighted by their regional rarity). Lets take that and leave the rest.
+mamm.rich <- mamm.rich[[2]]
+plot(mamm.rich)
+```
+
+# Tablular Join
+Join park visit data to Protected Area's shapefile data
+
+```{r}
+# keep only columns needed for protected areas and park visits
+
+prot.areas <- pas.valid.proj %>%
+  select(ParkName = Unit_Nm, State = Stat_Nm, geometry)
+
+list(unique(park.visits$ParkType))
+
+# now change name strings to match park visit ParkName format:
+prot.areas$ParkName <- gsub("National Park", "NP", prot.areas$ParkName)
+prot.areas$ParkName <- gsub("National Monument", "NM", prot.areas$ParkName)
+prot.areas$ParkName <- gsub("National Battlefield", "NB", prot.areas$ParkName)
+prot.areas$ParkName <- gsub("National Historical Park", "NHP", prot.areas$ParkName)
+prot.areas$ParkName <- gsub("National Reserve", "NR", prot.areas$ParkName)
+prot.areas$ParkName <- gsub("National Seashore", "NS", prot.areas$ParkName)
+prot.areas$ParkName <- gsub("National Recreation Area", "NRA", prot.areas$ParkName)
+prot.areas$ParkName <- gsub("National Historic Site", "NHS", prot.areas$ParkName)
+prot.areas$ParkName <- gsub("National Preserve", "NPRES", prot.areas$ParkName)
+prot.areas$ParkName <- gsub("National Memorial", "NMEM", prot.areas$ParkName)
+prot.areas$ParkName <- gsub("National Parkway", "MEM PKWY", prot.areas$ParkName)
+prot.areas$ParkName <- gsub("National Wild & Scenic River", "W&SR", prot.areas$ParkName)
+
+plot(prot.areas)
+
+
+# clean up park visit and make visits numeric so they can be added together
+park.visits$RecreationVisits <- as.numeric(gsub(",","", park.visits$RecreationVisits))
+
+
+# group by park and state
+ann.park.visits <- park.visits %>% 
+  group_by(UnitCode, ParkName, State) %>% 
+  summarise(., Visits = sum(RecreationVisits))
+
+# left join... and Put prot.areas on left, then park visits on right...
+
+prot.area.visit.join <- left_join(prot.areas, ann.park.visits)
+prot.area.visit.join <- prot.area.visit.join %>%
+  select(ParkName, State, Visits, geometry)
+
+head(prot.area.visit.join); dim(prot.area.visit.join)
+
+# and we ended up with the same number of observations from the protected areas file, 544
+```
+
+
+# Spatial Join
+*** Need to figure out how to actually include a spatial join? This step would actually be:
+
+# Extraction?
+Join protected areas shapefile with species richness. 
+Only joining species richness data that lies within the protected area boundary
+
+
+# Crop Mammal Richness to geometries
+```{r rastcrop}
+# first need to project protected area sf as a SpatVector to be able to use 'terra' functions on it:
+prot.area.vect <- as(prot.area.visit.join, "SpatVector")
+
+mamm.rich.crop <- crop(mamm.rich, project(prot.area.vect, mamm.rich))
+
+plot(mamm.rich.crop)
+```
+
+# Extract species richness value for each protected area
+# going to go with max species richness??
+
+```{r zones}
+
+prot.area.vect.proj <- terra::project(prot.area.vect, mamm.rich)
+prot.area.zones <- terra::rasterize(prot.area.vect.proj, mamm.rich.crop, field = "ParkName")
+mammal.zones <- terra::zonal(mamm.rich.crop, prot.area.zones, fun = "max", na.rm=TRUE)
+
+
+# do this same thing for park visits?
+
+```
 
 # Task 3: Build a map with Tmap
 Practice making a quick map with tmap. 
