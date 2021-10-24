@@ -27,6 +27,12 @@ _Question 1_ Why are they bad? What might improve them?
 _Question 2_ Rely on the Healy and Wilke texts to provide some structure to your answers.
 
 ![Bad Map 1](/home/michaela/R/assignment-08-michaelagustafson/code/badmap1.jpg)
+Why is this a bad map? Using monocolor schemes isn't always the best choice. In this example, many of the colors are very similar, therefore, its hard to tell what color is actually corresponding to some states.
+
+Bad Map 2
+![Bad Map 2](/home/michaela/R/assignment-08-michaelagustafson/code/badmap2.png)
+To me, this map is a little hard to understand. The lighter colored countries say that the reported religious affiliation is less than 90%, but how much less? And if it's less than 90% then maybe it isn't even the majority of the population that is affiliated with that religion and perhaps another religion is more prevalent. 
+
 
 # Task 2: Load your libraries and build a dataframe
 You can choose whichever datasets you'd like from the past several months as the subject for your mapping. You'll need to use at least one tabular join, one spatial join, and one extraction to create the dataframe. Load the packages, the data, and make sure everything is projected here. Give me a sense for what you are hoping to map.
