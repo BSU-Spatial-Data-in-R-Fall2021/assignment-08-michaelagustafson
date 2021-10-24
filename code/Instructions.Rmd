@@ -152,6 +152,7 @@ prot.area.vect <- as(prot.area.visit.join, "SpatVector")
 mamm.rich.crop <- crop(mamm.rich, project(prot.area.vect, mamm.rich))
 
 plot(mamm.rich.crop)
+plot(prot.area.vect, add = TRUE)
 ```
 
 # Extract species richness value for each protected area
@@ -163,9 +164,22 @@ prot.area.vect.proj <- terra::project(prot.area.vect, mamm.rich)
 prot.area.zones <- terra::rasterize(prot.area.vect.proj, mamm.rich.crop, field = "ParkName")
 mammal.zones <- terra::zonal(mamm.rich.crop, prot.area.zones, fun = "max", na.rm=TRUE)
 
+mammal.zones <- mammal.zones[!is.na(mammal.zones$ParkName),]
 
-# do this same thing for park visits?
+max(mammal.zones$Value) #88
 
+which(mammal.zones == max(mammal.zones$Value), arr.ind = T)
+
+max.mm.rich <- as.data.frame(mammal.zones$ParkName[c(1:3, 7, 10, 24, 26, 28, 32:34, 40, 51, 70, 73, 75, 85, 109, 118, 123, 125, 130, 131)])
+# rename column name back to ParkName
+
+max.mm.rich <- dplyr::rename(max.mm.rich, ParkName = "mammal.zones$ParkName[c(1:3, 7, 10, 24, 26, 28, 32:34, 40, 51, 70, 73, 75, 85, 109, 118, 123, 125, 130, 131)]")
+
+
+max.rich.visits <- left_join(max.mm.rich, ann.park.visits)
+max.rich.visits <- max.rich.visits[!is.na(max.rich.visits$Visits),]
+
+max(rich.visits$Visits, na.rm = TRUE) #8016510
 ```
 
 # Task 3: Build a map with Tmap
