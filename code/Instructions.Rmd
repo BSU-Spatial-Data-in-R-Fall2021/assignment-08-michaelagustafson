@@ -42,6 +42,7 @@ library(terra)
 library(sf)
 library(tidyr)
 library(dplyr)
+library(tmap)
 
 
 data <- list.files("/opt/data/session14/")
@@ -195,13 +196,17 @@ print(max(ann.park.visits$Visits))
 # the protected area with the most visits had 12,400,045 visitors/year2020
 
 # It's actually the Golden Gate National Recreation Area! Maybe because this is located right in San Francisco and is easily accessible???
+
+mamm.visits.join <- inner_join(ann.park.visits, mammal.zones)
+
+mamm.visits.pas.join <- left_join(mamm.visits.join, prot.area.visit.join)
 ```
 
 # Task 3: Build a map with Tmap
 Practice making a quick map with tmap. 
 
 ```{r tmap}
-
+tm_shape(prot.area.zones) + tm_polygons(col = 'ParkName' + border.col = "white") + tm_legend(outside = TRUE)
 ```
 
 # Task 4: Build a choropleth with ggplot
