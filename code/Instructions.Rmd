@@ -43,6 +43,9 @@ library(sf)
 library(tidyr)
 library(dplyr)
 library(tmap)
+library(viridis)
+library(ggplot2)
+library(ggmap)
 
 
 data <- list.files("/opt/data/session14/")
@@ -53,15 +56,29 @@ data
 
 pas.shp <- read_sf("/opt/data/session14/reg_pas.shp")
 mamm.rich <- rast("/opt/data/session16/Mammals_total_richness.tif")
+mamm.rich <- catalyze(mamm.rich)
+mamm.rich <- mamm.rich[[2]]
 park.visits <- read.csv("/opt/data/session14/ParkVisits_2020IWPW.csv", skip = 3)
 
 ```
+
+# create outline map
+```{r}
+west.states <- tigris::states(cb=TRUE) %>% 
+  filter(STUSPS == c("ID", "MT", "WY", "CO", "NM", "AZ", "CA", "NV", "OR", "WA", "UT"))
+```
+
+
 # Check geometries
 
 ```{r geocheck}
 st_is_valid(pas.shp)
 pas.shp.valid <- st_make_valid(pas.shp)
 st_is_valid(pas.shp.valid)
+
+# keep only columns I need
+pas.shp.valid <- pas.shp.valid %>%
+  select(Unit_Nm, State = Stat_Nm, geometry)
 ```
 
 # Check CRS
@@ -73,152 +90,132 @@ st_crs(mamm.rich)
 # shapefile needs to be in same CRS as raster
 # DON'T REPROJECT RASTERS
 
-pas.valid.proj <- pas.shp.valid %>% 
-  st_transform(., crs = st_crs(mamm.rich))
+# first turn polygon sf into vector before reprojecting:
 
-st_crs(pas.valid.proj) == st_crs(mamm.rich)
+pa.vect <- as(pas.shp.valid, "SpatVector")
 
-# Also know from previous code we need to catalyze mammal richness:
-# And only keep what we need: the value
-mamm.rich <- catalyze(mamm.rich)
-plot(mamm.rich)
+pa.vect.proj <- project(pa.vect, mamm.rich)
 
-# When we plot the data we see that the “Value” raster contains the informaiton we are looking for (the number of species weighted by their regional rarity). Lets take that and leave the rest.
-mamm.rich <- mamm.rich[[2]]
-plot(mamm.rich)
+crs(pa.vect.proj) == crs(mamm.rich)
+
+# crop mammal rich to protected areas vector:
+
+mam.rich.crop <- crop(mamm.rich, pa.vect.proj)
 ```
 
 # Tablular Join
 Join park visit data to Protected Area's shapefile data
 
 ```{r}
-# keep only columns needed for protected areas and park visits
-
-prot.areas <- pas.valid.proj %>%
-  select(ParkName = Unit_Nm, State = Stat_Nm, geometry)
 
 list(unique(park.visits$ParkType))
 
 # now change name strings to match park visit ParkName format:
-prot.areas$ParkName <- gsub("National Park", "NP", prot.areas$ParkName)
-prot.areas$ParkName <- gsub("National Monument", "NM", prot.areas$ParkName)
-prot.areas$ParkName <- gsub("National Battlefield", "NB", prot.areas$ParkName)
-prot.areas$ParkName <- gsub("National Historical Park", "NHP", prot.areas$ParkName)
-prot.areas$ParkName <- gsub("National Reserve", "NR", prot.areas$ParkName)
-prot.areas$ParkName <- gsub("National Seashore", "NS", prot.areas$ParkName)
-prot.areas$ParkName <- gsub("National Recreation Area", "NRA", prot.areas$ParkName)
-prot.areas$ParkName <- gsub("National Historic Site", "NHS", prot.areas$ParkName)
-prot.areas$ParkName <- gsub("National Preserve", "NPRES", prot.areas$ParkName)
-prot.areas$ParkName <- gsub("National Memorial", "NMEM", prot.areas$ParkName)
-prot.areas$ParkName <- gsub("National Parkway", "MEM PKWY", prot.areas$ParkName)
-prot.areas$ParkName <- gsub("National Wild & Scenic River", "W&SR", prot.areas$ParkName)
+pa.vect.proj$Unit_Nm <- gsub("National Park", "NP", pa.vect.proj$Unit_Nm)
+pa.vect.proj$Unit_Nm <- gsub("National Monument", "NM", pa.vect.proj$Unit_Nm)
+pa.vect.proj$Unit_Nm <- gsub("National Battlefield", "NB", pa.vect.proj$Unit_Nm)
+pa.vect.proj$Unit_Nm <- gsub("National Historical Park", "NHP", pa.vect.proj$Unit_Nm)
+pa.vect.proj$Unit_Nm <- gsub("National Reserve", "NR", pa.vect.proj$Unit_Nm)
+pa.vect.proj$Unit_Nm <- gsub("National Seashore", "NS", pa.vect.proj$Unit_Nm)
+pa.vect.proj$Unit_Nm <- gsub("National Recreation Area", "NRA", pa.vect.proj$Unit_Nm)
+pa.vect.proj$Unit_Nm <- gsub("National Historic Site", "NHS", pa.vect.proj$Unit_Nm)
+pa.vect.proj$Unit_Nm <- gsub("National Preserve", "NPRES", pa.vect.proj$Unit_Nm)
+pa.vect.proj$Unit_Nm <- gsub("National Memorial", "NMEM", pa.vect.proj$Unit_Nm)
+pa.vect.proj$Unit_Nm <- gsub("National Parkway", "MEM PKWY", pa.vect.proj$Unit_Nm)
+pa.vect.proj$Unit_Nm <- gsub("National Wild & Scenic River", "W&SR", pa.vect.proj$Unit_Nm)
 
-plot(prot.areas)
+plot(pa.vect.proj)
 
 
 # clean up park visit and make visits numeric so they can be added together
 park.visits$RecreationVisits <- as.numeric(gsub(",","", park.visits$RecreationVisits))
-
+park.visits <- rename(park.visits, Unit_Nm = ParkName)
 
 # group by park and state
 ann.park.visits <- park.visits %>% 
-  group_by(UnitCode, ParkName, State) %>% 
+  group_by(UnitCode, Unit_Nm, State) %>% 
   summarise(., Visits = sum(RecreationVisits))
 
-# left join... and Put prot.areas on left, then park visits on right...
 
-prot.area.visit.join <- left_join(prot.areas, ann.park.visits)
-prot.area.visit.join <- prot.area.visit.join %>%
-  select(ParkName, State, Visits, geometry)
+```
+# Join to create dataframe
+```{r}
 
-head(prot.area.visit.join); dim(prot.area.visit.join)
+pa.summary <- left_join(st_as_sf(pa.vect.proj), ann.park.visits)
 
-# and we ended up with the same number of observations from the protected areas file, 544
+# extract
+pa.zones <- terra::rasterize(pa.vect.proj, mam.rich.crop, field = "Unit_Nm")
+mammal.zones <- terra::zonal(mam.rich.crop, pa.zones, fun = "mean", na.rm=TRUE)
+
+# now combine all into one dataframe
+summary.df <- pa.summary %>% 
+  left_join(., mammal.zones)
 ```
 
 
-# Spatial Join
-*** Need to figure out how to actually include a spatial join? This step would actually be:
-
-# Extraction?
-Join protected areas shapefile with species richness. 
-Only joining species richness data that lies within the protected area boundary
-
-
-# Crop Mammal Richness to geometries
-```{r rastcrop}
-# first need to project protected area sf as a SpatVector to be able to use 'terra' functions on it:
-prot.area.vect <- as(prot.area.visit.join, "SpatVector")
-
-mamm.rich.crop <- crop(mamm.rich, project(prot.area.vect, mamm.rich))
-
-plot(mamm.rich.crop)
-plot(prot.area.vect, add = TRUE)
-```
-
-# Extract species richness value for each protected area
-# going to go with max species richness??
-
-```{r zones}
-
-prot.area.vect.proj <- terra::project(prot.area.vect, mamm.rich)
-prot.area.zones <- terra::rasterize(prot.area.vect.proj, mamm.rich.crop, field = "ParkName")
-mammal.zones <- terra::zonal(mamm.rich.crop, prot.area.zones, fun = "max", na.rm=TRUE)
-
-mammal.zones <- mammal.zones[!is.na(mammal.zones$ParkName),]
-
-max(mammal.zones$Value) #88
-
-which(mammal.zones == max(mammal.zones$Value), arr.ind = T)
-
-max.mm.rich <- as.data.frame(mammal.zones$ParkName[c(1:3, 7, 10, 24, 26, 28, 32:34, 40, 51, 70, 73, 75, 85, 109, 118, 123, 125, 130, 131)])
-# rename column name back to ParkName
-
-max.mm.rich <- dplyr::rename(max.mm.rich, ParkName = "mammal.zones$ParkName[c(1:3, 7, 10, 24, 26, 28, 32:34, 40, 51, 70, 73, 75, 85, 109, 118, 123, 125, 130, 131)]")
-
-print(max.mm.rich)
-
-
-max.rich.visits <- left_join(max.mm.rich, ann.park.visits)
-
-# There are a lot of protected areas that didn't have visitor data, so we'll take those out
-max.rich.visits <- max.rich.visits[!is.na(max.rich.visits$Visits),]
-
-# so now we have the number of visits for the most mammal species rich protected areas:
-print(max.rich.visits)
-# Carlsbad Caverns National Park and Mesa Verde National Park
-
-# BUT, are these the protected areas with the HIGHEST number of visits?
-# Because I'm trying to answer if the species richness is correlated with number of visits (are people visiting that place because the of the variety of mammal species in the area that they might potentially see? If not, why are those most visited areas so popular? Probably for the rocks...)
-
-print(max(ann.park.visits$Visits))
-
-# the protected area with the most visits had 12,400,045 visitors/year2020
-
-# It's actually the Golden Gate National Recreation Area! Maybe because this is located right in San Francisco and is easily accessible???
-
-mamm.visits.join <- inner_join(ann.park.visits, mammal.zones)
-
-mamm.visits.pas.join <- left_join(mamm.visits.join, prot.area.visit.join)
-```
 
 # Task 3: Build a map with Tmap
 Practice making a quick map with tmap. 
 
 ```{r tmap}
-tm_shape(prot.area.zones) + tm_polygons(col = 'ParkName' + border.col = "white") + tm_legend(outside = TRUE)
+
+tm_shape(summary.df) + tm_polygons(col = "Visits",  border.col = "white") + 
+  tm_legend(outside = TRUE)
+
+
+tm_shape(mam.rich.crop) +
+  tm_raster("Value", palette = viridis(n=50), n=50, legend.show=FALSE, legend.hist = TRUE, legend.hist.title = "Species Richness") +
+tm_shape(summary.df) +
+  tm_polygons(col = "Visits",  border.col = "white", title="# Visits") + 
+  tm_legend(outside = TRUE)
+
+
 ```
 
 # Task 4: Build a choropleth with ggplot
 Your map should have a basemap, should rely on more than one aesthetic (color, transparency, etc), and combine multiple layers.
 
+
+
+```{r}
+ggplot(summary.df) +
+  geom_sf(mapping = aes(fill = Visits))
+```
+
 # Task 5: Build 2 cartograms
 Follow the examples to build cartograms that display your region of interest based on variables other than area.
 
+```{r}
+bg <- ggmap::get_map(as.vector(st_bbox(west.states)))
+
+ggmap(bg) +
+   geom_sf(data = summary.df, mapping = aes(fill = Visits), inherit.aes = FALSE) +
+  geom_sf(data=west.states, fill=NA,color="black", inherit.aes = FALSE) +
+  coord_sf(crs = st_crs(4326))
+
+
+# hmm not sure why I'm zoomed in on CA?
+
+# oh guess thats why we change scales next?
+
+ggmap(bg) +
+  geom_sf(data = summary.df, mapping = aes(fill = Value, inherit.aes = FALSE)) +
+  geom_sf(data=west.states, fill=NA,color="black", inherit.aes = FALSE) +
+  scale_fill_viridis(option="magma")+
+  coord_sf(crs = st_crs(4326))
+
+# alright not really sure whats going on right here
+```
+
+
 _Question 3:_ Reflect on the different maps you've made, what do the different visualizations tell you about the data you plotted?
+
+Well, I don't think I picked the best data to look at... very hard to actually see if the parks with the most visits have the highest mean value of species richness...
 
 _Question 4:_ How might you improve the maps you've made?
 
+Uhh... well kind of everything about them haha. I'm not really sure. Kind of brain dead at this point. Will come back to this. 
+
 _Question 5:_ Is a map the best way to evaluate the data you worked with? Why or Why not?
 
-
+Not necessarily? I think this information could be presented not in map form... Or maybe even a fun interactive way would be better...
