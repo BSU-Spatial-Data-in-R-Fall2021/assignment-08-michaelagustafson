@@ -66,6 +66,11 @@ park.visits <- read.csv("/opt/data/session14/ParkVisits_2020IWPW.csv", skip = 3)
 ```{r}
 west.states <- tigris::states(cb=TRUE) %>% 
   filter(STUSPS == c("ID", "MT", "WY", "CO", "NM", "AZ", "CA", "NV", "OR", "WA", "UT"))
+
+#you should use %in% here as the code you have only takes the first (alphabetical) mathc
+west.states <- tigris::states(cb=TRUE) %>% 
+  filter(., STUSPS %in%c("ID", "MT", "WY", "CO", "NM", "AZ", "CA", "NV", "OR", "WA", "UT"))
+
 ```
 
 
@@ -171,6 +176,7 @@ tm_shape(summary.df) +
 
 
 ```
+__MW: There are a lot of missing values here, probably because you didn't filter the pa dataset just to national parks? either that or somthing in your join did not work the way you meant for it to__
 
 # Task 4: Build a choropleth with ggplot
 Your map should have a basemap, should rely on more than one aesthetic (color, transparency, etc), and combine multiple layers.
@@ -193,7 +199,7 @@ ggmap(bg) +
   geom_sf(data=west.states, fill=NA,color="black", inherit.aes = FALSE) +
   coord_sf(crs = st_crs(4326))
 
-
+#plot(st_geometry(west.states)) shows that this only contains california; I fixed it above and now it owrks
 # hmm not sure why I'm zoomed in on CA?
 
 # oh guess thats why we change scales next?
@@ -219,3 +225,5 @@ Uhh... well kind of everything about them haha. I'm not really sure. Kind of bra
 _Question 5:_ Is a map the best way to evaluate the data you worked with? Why or Why not?
 
 Not necessarily? I think this information could be presented not in map form... Or maybe even a fun interactive way would be better...
+
+_MW: this is a pretty minimal effort and I can't get your second map to plot_
